@@ -45,11 +45,12 @@
   .coordread{font-size:11px;color:var(--muted);margin-top:-4px;margin-bottom:8px;}
   .copybadge{position:absolute;top:6px;right:6px;background:#b45309;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;display:none;}
   .small{font-size:11px;color:var(--muted);}
+  @page{ size: A4 landscape; margin: 8mm; }
   @media print{
     body *{visibility:hidden;}
     #printArea, #printArea *{visibility:visible;}
     #printArea{position:absolute;left:0;top:0;width:100%;}
-    .page-wrap{box-shadow:none;page-break-after:always;width:100%;}
+    .page-wrap{box-shadow:none;page-break-after:always;margin:0 auto;}
     #sidebar,.toolbar,.copybadge-ui{display:none!important;}
   }
 </style>
@@ -290,8 +291,7 @@ function layoutFields(){
     const [nw, nh] = nativeSize(p.page);
     fieldEls[key].forEach(el=>{
       const wrap = el.parentElement;
-      const rect = wrap.getBoundingClientRect();
-      const scale = rect.width / nw;
+      const scale = (printScale && printScale[p.page]) ? printScale[p.page] : (wrap.getBoundingClientRect().width / nw);
       el.style.left = (p.x*scale) + 'px';
       el.style.top = (p.y*scale) + 'px';
       el.style.fontSize = (p.size*scale) + 'px';
@@ -472,6 +472,44 @@ document.querySelectorAll('#sidebar input, #sidebar select').forEach(el=>{
   el.addEventListener('change', recalc);
 });
 window.addEventListener('resize', layoutFields);
+
+// ---------- print sizing (deterministic, not measured) ----------
+// Printing forces .page-wrap to a physical mm width so each page fills the
+// A4-landscape sheet correctly; getBoundingClientRect() can still report the
+// *screen* size at beforeprint time in some browsers, which is what caused
+// the field text to drift out of alignment with the image. Instead we compute
+// the print width in mm ourselves and convert to CSS px with the fixed
+// 96px-per-inch rule, so the scale used for text positions always matches
+// the scale the browser actually renders the image at.
+const PX_PER_MM = 96/25.4;
+const PRINT_MARGIN_MM = 8;              // must match the @page margin above
+const PRINT_PAGE_W_MM = 297, PRINT_PAGE_H_MM = 210; // A4 landscape
+const PRINTABLE_W_MM = PRINT_PAGE_W_MM - PRINT_MARGIN_MM*2;
+const PRINTABLE_H_MM = PRINT_PAGE_H_MM - PRINT_MARGIN_MM*2;
+let printScale = null; // {1: scale, 2: scale} while print styling is active
+
+function printTargetWidthMM(nw, nh){
+  // fit inside the printable box, whichever dimension is the binding one
+  return Math.min(PRINTABLE_W_MM, PRINTABLE_H_MM * (nw/nh));
+}
+
+function preparePrintSizes(){
+  printScale = {};
+  [1,2].forEach(pageNum=>{
+    const [nw, nh] = nativeSize(pageNum);
+    const targetMM = printTargetWidthMM(nw, nh);
+    printScale[pageNum] = (targetMM * PX_PER_MM) / nw;
+    (pageWraps[pageNum]||[]).forEach(wrap=>{ if(wrap) wrap.style.width = targetMM + 'mm'; });
+  });
+  layoutFields();
+}
+function restoreScreenSizes(){
+  printScale = null;
+  Object.values(pageWraps).flat().forEach(wrap=>{ if(wrap) wrap.style.width = '827px'; });
+  layoutFields();
+}
+window.addEventListener('beforeprint', preparePrintSizes);
+window.addEventListener('afterprint', restoreScreenSizes);
 
 // ---------- print ----------
 $('btnPrint').addEventListener('click', ()=>window.print());
