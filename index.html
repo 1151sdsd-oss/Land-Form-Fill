@@ -341,8 +341,8 @@ function recalc(){
 
   const hintBox = $('selfFileHintBox');
   if(disburse !== 0){
-    const val1 = Math.round(amt722 * 1.2);
-    const val2 = Math.round(non722 * 1.2);
+    const val1 = Math.ceil(amt722 * 1.2);
+    const val2 = Math.ceil(non722 * 1.2);
     const valT = val1 + val2;
     let hintText;
     if(amt722 === 0 || disburse === amt722){
